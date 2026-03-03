@@ -18,7 +18,7 @@ jobs:
         include:
           - runner: macos-latest
             platform: macos-arm64
-          - runner: macos-13
+          - runner: macos-15-intel
             platform: macos-x64
           - runner: ubuntu-latest
             platform: linux-x64
@@ -65,6 +65,7 @@ jobs:
 
   release:
     needs: build
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
 
     steps:
