@@ -4,7 +4,7 @@ export default {
   app: {
     name: "Git Account Switcher",
     identifier: "dev.gitaccountswitcher.app",
-    version: "1.2.0",
+    version: "1.2.1",
     description: "Switch between multiple GitHub accounts with one click",
   },
   build: {
