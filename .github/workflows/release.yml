@@ -1,9 +1,11 @@
-name: Build & Release
+name: Build & Release (Manual)
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release (e.g. v1.2.0)"
+        required: true
 
 permissions:
   contents: write
@@ -15,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -38,13 +42,14 @@ jobs:
       - name: List build artifacts
         run: |
           echo "=== Build directory ==="
-          ls -la build/ || true
+          ls -laR build/ || true
           echo "=== Artifacts directory ==="
-          ls -la artifacts/ || true
+          ls -laR artifacts/ || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.tag }}
           generate_release_notes: true
           draft: false
           prerelease: false
