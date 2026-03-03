@@ -59,9 +59,23 @@ jobs:
           git push origin main
           git push origin "v${{ steps.version.outputs.new_version }}"
 
-  release:
+  build:
     needs: bump
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            platform: macos-arm64
+          - runner: macos-13
+            platform: macos-x64
+          - runner: ubuntu-latest
+            platform: linux-x64
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+          - runner: windows-latest
+            platform: win-x64
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Checkout at tag
@@ -81,11 +95,6 @@ jobs:
       - name: Build Electrobun app
         run: bunx electrobun build --env=canary
         env:
-          # Uncomment and set these secrets to enable code signing & notarization:
-          # ELECTROBUN_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          # ELECTROBUN_APPLEID: ${{ secrets.APPLE_ID }}
-          # ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_ID_PASSWORD }}
-          # ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
           CI: true
 
       - name: List build artifacts
@@ -94,6 +103,30 @@ jobs:
           ls -laR build/ || true
           echo "=== Artifacts directory ==="
           ls -laR artifacts/ || true
+        shell: bash
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}
+          path: artifacts/*
+          if-no-files-found: warn
+
+  release:
+    needs: [bump, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: List all artifacts
+        run: |
+          echo "=== All downloaded artifacts ==="
+          find all-artifacts -type f | sort
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -104,7 +137,9 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/*.dmg
-            artifacts/*.tar.zst
+            all-artifacts/*.dmg
+            all-artifacts/*.tar.zst
+            all-artifacts/*.tar.gz
+            all-artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
