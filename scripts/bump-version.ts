@@ -65,6 +65,5 @@ constantsContent = constantsContent.replace(
 );
 await Bun.write(constantsPath, constantsContent);
 
-// 6. Output new version (used by CI to create tags)
-console.log(`::set-output name=new_version::${newVersion}`);
+// 6. Output new version
 console.log(`NEW_VERSION=${newVersion}`);
