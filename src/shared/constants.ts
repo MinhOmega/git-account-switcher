@@ -1,5 +1,5 @@
 export const APP_NAME = "Git Account Switcher";
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.2.2";
 export const APP_IDENTIFIER = "dev.gitaccountswitcher.app";
 
 export const COLORS = {
