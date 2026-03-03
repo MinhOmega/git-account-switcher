@@ -97,19 +97,38 @@ jobs:
         env:
           CI: true
 
-      - name: List build artifacts
-        run: |
-          echo "=== Build directory ==="
-          ls -laR build/ || true
-          echo "=== Artifacts directory ==="
-          ls -laR artifacts/ || true
+      - name: Prepare artifacts
         shell: bash
+        run: |
+          mkdir -p release-assets
+          PLATFORM="${{ matrix.platform }}"
 
-      - name: Upload build artifacts
+          case "$PLATFORM" in
+            macos-arm64)
+              cp artifacts/*-macos-arm64-*.dmg release-assets/GitAccountSwitcher-arm64.dmg
+              ;;
+            macos-x64)
+              cp artifacts/*-macos-x64-*.dmg release-assets/GitAccountSwitcher-x64.dmg
+              ;;
+            win-x64)
+              cp artifacts/*-win-x64-*Setup*.zip release-assets/GitAccountSwitcher-Setup.zip
+              ;;
+            linux-x64)
+              cp artifacts/*-linux-x64-*Setup*.tar.gz release-assets/GitAccountSwitcher-linux-x64-Setup.tar.gz
+              ;;
+            linux-arm64)
+              cp artifacts/*-linux-arm64-*Setup*.tar.gz release-assets/GitAccountSwitcher-linux-arm64-Setup.tar.gz
+              ;;
+          esac
+
+          echo "=== Release assets ==="
+          ls -la release-assets/
+
+      - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.platform }}
-          path: artifacts/*
+          name: release-${{ matrix.platform }}
+          path: release-assets/*
           if-no-files-found: warn
 
   release:
@@ -118,16 +137,76 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download all build artifacts
+      - name: Download all release assets
         uses: actions/download-artifact@v4
         with:
-          path: all-artifacts
+          path: all-assets
+          pattern: release-*
           merge-multiple: true
 
-      - name: List all artifacts
+      - name: Generate latest manifest files
         run: |
-          echo "=== All downloaded artifacts ==="
-          find all-artifacts -type f | sort
+          VERSION="${{ needs.bump.outputs.new_version }}"
+          RELEASE_DATE="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+
+          generate_manifest() {
+            local file="$1"
+            local output="$2"
+            if [ -f "all-assets/$file" ]; then
+              SHA512=$(sha512sum "all-assets/$file" | cut -d' ' -f1)
+              SIZE=$(stat --format=%s "all-assets/$file" 2>/dev/null || stat -f%z "all-assets/$file" 2>/dev/null)
+              cat > "all-assets/$output" <<MEOF
+          version: ${VERSION}
+          files:
+            - url: ${file}
+              sha512: ${SHA512}
+              size: ${SIZE}
+          path: ${file}
+          sha512: ${SHA512}
+          releaseDate: '${RELEASE_DATE}'
+          MEOF
+            fi
+          }
+
+          # macOS manifest
+          if [ -f "all-assets/GitAccountSwitcher-arm64.dmg" ]; then
+            ARM_SHA=$(sha512sum "all-assets/GitAccountSwitcher-arm64.dmg" | cut -d' ' -f1)
+            ARM_SIZE=$(stat --format=%s "all-assets/GitAccountSwitcher-arm64.dmg")
+            X64_SHA="" X64_SIZE=""
+            if [ -f "all-assets/GitAccountSwitcher-x64.dmg" ]; then
+              X64_SHA=$(sha512sum "all-assets/GitAccountSwitcher-x64.dmg" | cut -d' ' -f1)
+              X64_SIZE=$(stat --format=%s "all-assets/GitAccountSwitcher-x64.dmg")
+            fi
+            cat > all-assets/latest-mac.yml <<MEOF
+          version: ${VERSION}
+          files:
+            - url: GitAccountSwitcher-arm64.dmg
+              sha512: ${ARM_SHA}
+              size: ${ARM_SIZE}
+          $(if [ -n "$X64_SHA" ]; then echo "  - url: GitAccountSwitcher-x64.dmg"; echo "    sha512: ${X64_SHA}"; echo "    size: ${X64_SIZE}"; fi)
+          releaseDate: '${RELEASE_DATE}'
+          MEOF
+          fi
+
+          # Windows manifest
+          generate_manifest "GitAccountSwitcher-Setup.zip" "latest.yml"
+
+          # Linux manifest
+          if [ -f "all-assets/GitAccountSwitcher-linux-x64-Setup.tar.gz" ]; then
+            L_SHA=$(sha512sum "all-assets/GitAccountSwitcher-linux-x64-Setup.tar.gz" | cut -d' ' -f1)
+            L_SIZE=$(stat --format=%s "all-assets/GitAccountSwitcher-linux-x64-Setup.tar.gz")
+            cat > all-assets/latest-linux.yml <<MEOF
+          version: ${VERSION}
+          files:
+            - url: GitAccountSwitcher-linux-x64-Setup.tar.gz
+              sha512: ${L_SHA}
+              size: ${L_SIZE}
+          releaseDate: '${RELEASE_DATE}'
+          MEOF
+          fi
+
+          echo "=== All release files ==="
+          ls -la all-assets/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -138,9 +217,13 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            all-artifacts/*.dmg
-            all-artifacts/*.tar.zst
-            all-artifacts/*.tar.gz
-            all-artifacts/*.zip
+            all-assets/GitAccountSwitcher-arm64.dmg
+            all-assets/GitAccountSwitcher-x64.dmg
+            all-assets/GitAccountSwitcher-Setup.zip
+            all-assets/GitAccountSwitcher-linux-x64-Setup.tar.gz
+            all-assets/GitAccountSwitcher-linux-arm64-Setup.tar.gz
+            all-assets/latest-mac.yml
+            all-assets/latest.yml
+            all-assets/latest-linux.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
